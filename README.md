@@ -50,6 +50,12 @@ pip install -r requirements.txt
    copy .env.example .env
    ```
 3. Open `.env` and paste your key after `ANTHROPIC_API_KEY=`.
+4. Confirm the key works with a single tiny API call:
+   ```powershell
+   python -m homemate.scripts.live_check
+   ```
+   Expect `[OK] Claude is reachable and responding.` Costs roughly one cent
+   of tokens.
 
 ### 4. Run the demo
 ```powershell
@@ -87,10 +93,15 @@ homemate/
 ├── cognition/
 │   ├── llm_agent.py    # Anthropic tool-calling loop (+ MockLLM)
 │   └── tools.py        # JSON tool schemas + dispatch
+├── memory/
+│   └── store.py        # JSON-on-disk episodes + profile rollup
+├── scripts/
+│   └── live_check.py   # Tiny one-shot Claude API connectivity check
 └── action/
     └── skills.py       # Primitive skills the LLM can call
 tests/
-└── test_smoke.py       # End-to-end smoke test using MockLLM (no API key, no GUI)
+├── test_smoke.py       # End-to-end smoke test using MockLLM (no API key, no GUI)
+└── test_memory.py      # Memory module tests (stdlib only)
 ```
 
 ---
@@ -128,7 +139,23 @@ before you spend Claude tokens.
 
 ## Roadmap (per proposal)
 
-- **May 7 – May 28** Phase 1: 2D simulator + mock IoT + webcam + emotion — **MVP (this commit)**
-- **May 29 – Jun 18** Phase 2: Claude tool loop + A* nav + "find & greet" end-to-end
-- **Jun 19 – Jul 9** Phase 3: emotion-aware dialogue, memory, full IoT control, ReAct planner, 20 eval scenarios
+- **May 7 – May 28** Phase 1: 2D simulator + mock IoT + webcam + emotion — **done**
+- **May 29 – Jun 18** Phase 2: Claude tool loop + A* nav + "find & greet" end-to-end — **code done; run `live_check.py` once you have an API key**
+- **Jun 19 – Jul 9** Phase 3: emotion-aware dialogue, **memory (done)**, full IoT control, ReAct planner, 20 eval scenarios — *in progress*
 - **Jul 10 – Jul 30** Phase 4: full evaluation + ablations + demo video + slide deck + Lecture 13 presentation
+
+## Long-term memory
+
+After each user turn, HomeMate appends a JSON episode describing what was
+asked, what emotion was detected, which rooms it visited, and which IoT
+changes it made. A tiny `profile.json` rollup (emotion counts, frequent
+devices, recent requests) is summarised into the system prompt on each new
+turn so Claude can personalise its replies across sessions.
+
+Default storage: `data/memory/episodes.jsonl` + `data/memory/profile.json`
+(gitignored). Override with `HOMEMATE_MEMORY_DIR`. CLI flags:
+
+```powershell
+python -m homemate.demo_cli sad "open curtains" --reset-memory   # wipe first
+python -m homemate.demo_cli sad "open curtains" --no-memory      # don't record
+```

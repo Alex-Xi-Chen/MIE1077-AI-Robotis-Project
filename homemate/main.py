@@ -20,15 +20,18 @@ import sys
 import threading
 from typing import Optional
 
-from dotenv import load_dotenv
-
-load_dotenv()  # populate env BEFORE importing config
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # populate env BEFORE importing config
+except ImportError:
+    pass  # dotenv is optional; env vars set directly still work
 
 import pygame  # noqa: E402
 
 from . import config  # noqa: E402
 from .action.skills import Skills  # noqa: E402
 from .cognition.llm_agent import LLMAgent, MockLLM, TurnResult, make_agent  # noqa: E402
+from .memory import MemoryStore  # noqa: E402
 from .perception.emotion import (  # noqa: E402
     DeepFaceEmotionDetector, EmotionDetector, MockEmotionDetector,
 )
@@ -63,12 +66,13 @@ class App:
         self.emotion.start()
 
         self.skills = Skills(self.apt, self.robot, self.owner, self.iot, self.emotion)
+        self.memory = MemoryStore()
         self.agent: LLMAgent | MockLLM
         try:
-            self.agent = make_agent(self.skills)
+            self.agent = make_agent(self.skills, memory=self.memory)
         except Exception as e:
             print(f"[warning] LLM init failed ({e}); falling back to MockLLM.")
-            self.agent = MockLLM(self.skills)
+            self.agent = MockLLM(self.skills, memory=self.memory)
 
         self.reset_scenario()
 

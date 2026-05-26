@@ -31,6 +31,7 @@ The full proposal lives one folder up at `../ECE1724_Home_Companion_Robot_Propos
 | Vision        | `homemate/perception/emotion.py`     | Real webcam (OpenCV) + DeepFace; `MockEmotion` fallback |
 | Planning      | `homemate/planning/`                 | A* on grid + room-sweep policy with time-of-day priors |
 | Robot Action  | `homemate/action/skills.py`          | 8 primitive skills exposed as JSON tools               |
+| Memory        | `homemate/memory/`                   | JSON-on-disk episodes + profile rollup; brief injected into the system prompt |
 | World / UI    | `homemate/world/`, `homemate/main.py`| Pygame top-down apartment, mock IoT (REST-style)       |
 
 ### Design decisions (don't re-litigate without reason)
@@ -51,9 +52,9 @@ The full proposal lives one folder up at `../ECE1724_Home_Companion_Robot_Propos
 - **Mocks everywhere**: `MockLLM`, `MockEmotionDetector`. Anything that costs
   money, needs hardware, or needs network has a deterministic stand-in.
 
-## Current status (as of MVP commit)
+## Current status
 
-Phase 1 of the proposal is **complete**:
+**Phase 1 — complete** (initial MVP commit):
 
 - 2D simulator with 4 rooms, walls, doors, A* navigation
 - Mock IoT with curtains, lamps, toaster, coffee maker (animated)
@@ -61,23 +62,51 @@ Phase 1 of the proposal is **complete**:
 - Claude tool-calling loop with 8 tools
 - Pygame UI with dialogue panel, status bar, input field
 - Headless CLI demo (`homemate/demo_cli.py`)
-- 7 smoke tests, all passing
+
+**Phase 2 — code complete, awaiting live API key**:
+
+- `homemate/scripts/live_check.py` — one tiny Anthropic ping for connectivity
+  smoke. Run `python -m homemate.scripts.live_check` once your key is in `.env`.
+- `LLMAgent` audited; tool-calling loop, history shape, and `stop_reason`
+  handling all correct.
+- `dotenv` import is now optional everywhere (works fine when env vars are
+  set directly).
+
+**Phase 3 — long-term memory shipped**:
+
+- `homemate/memory/` — JSON-on-disk store. Each user turn becomes one
+  `Episode` line in `episodes.jsonl`; a small `Profile` rollup in
+  `profile.json` tracks emotion counts, device-action counts, and recent
+  requests.
+- `MemoryStore.memory_brief()` produces a short text block that
+  `LLMAgent.build_system()` injects into the system prompt under
+  "What you remember about this owner".
+- Both `LLMAgent` and `MockLLM` record after every turn — symmetric so tests
+  cover the path.
+- Configurable via `HOMEMATE_MEMORY_DIR` (default: `<project>/data/memory/`,
+  gitignored).
+- `demo_cli` has `--no-memory` and `--reset-memory` flags.
+- 16 tests pass (7 original + 9 new memory tests).
 
 End-to-end MockLLM smoke verified: starting in living_room with owner in
 bedroom + injected `sad` emotion + user request "open the bedroom curtains
 and tell me a joke" → agent calls `find_owner` → `read_emotion` → `speak` (empathetic) → `navigate_to_device` → `set_device(curtain.bedroom, open)`. Final
-state matches expectations.
+state matches expectations. Memory persistence verified across 3 sequential
+`demo_cli` turns (profile + episodes both roll up correctly).
 
 ## Roadmap (the rest of the proposal)
 
 Aligned with the MIE1077 lecture schedule:
 
-- **May 29 – Jun 18 (Lectures 5–7) — Phase 2**
-  - Wire Claude live (the code is ready; just need an `ANTHROPIC_API_KEY`)
+- **May 29 – Jun 18 (Lectures 5–7) — Phase 2 (code done; needs API key)**
+  - ~~Wire Claude live (the code is ready; just need an `ANTHROPIC_API_KEY`)~~ ✓
+    code path audited; `live_check.py` ready
   - Polish UI: smoother path animation, IoT progress bars, owner walk
-  - End-to-end "find & greet" works with the real model
-- **Jun 19 – Jul 9 (Lectures 8–10) — Phase 3**
-  - Long-term memory (JSON or vector store; summarise into each prompt)
+  - End-to-end "find & greet" works with the real model (run `live_check.py`
+    first, then `python -m homemate.main`)
+- **Jun 19 – Jul 9 (Lectures 8–10) — Phase 3 (in progress)**
+  - ~~Long-term memory (JSON or vector store; summarise into each prompt)~~ ✓
+    JSON store shipped (`homemate/memory/`)
   - ReAct-style high-level planner (multi-step goal decomposition)
   - Full IoT control coverage
   - **20-scenario evaluation suite** (the deliverable)
@@ -131,6 +160,7 @@ Env flags:
 | `HOMEMATE_MODEL`           | Defaults to `claude-sonnet-4-6`                            |
 | `HOMEMATE_USE_MOCK_LLM=1`  | Use the deterministic `MockLLM` (no API calls)             |
 | `HOMEMATE_USE_MOCK_EMOTION=1` | Skip webcam/DeepFace, use keyboard-injected mock emotion |
+| `HOMEMATE_MEMORY_DIR`      | Memory store dir (default: `<project>/data/memory/`)       |
 
 ## Key bindings in the Pygame UI
 
@@ -153,6 +183,11 @@ Most changes hit one of three places:
   rendering case in `main.py::App._draw_device` if you want a custom widget.
 - **A new evaluation scenario** → planned for Phase 3; will live under
   `homemate/eval/` (does not exist yet).
+- **Memory shape changes** → edit `Episode` / `Profile` in
+  `homemate/memory/store.py`. If you add a field, update `from_json` so old
+  on-disk records still load. The brief consumed by the LLM is built in
+  `MemoryStore.memory_brief()` — keep it short (< ~300 chars) so it doesn't
+  bloat every prompt.
 
 ## Things to avoid
 

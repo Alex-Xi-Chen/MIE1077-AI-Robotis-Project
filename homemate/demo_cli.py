@@ -17,13 +17,16 @@ import json
 import random
 import sys
 
-from dotenv import load_dotenv
-
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv is optional; env vars set directly still work
 
 from . import config  # noqa: E402
 from .action.skills import Skills  # noqa: E402
 from .cognition.llm_agent import MockLLM, make_agent  # noqa: E402
+from .memory import MemoryStore  # noqa: E402
 from .perception.emotion import MockEmotionDetector  # noqa: E402
 from .world.apartment import Apartment  # noqa: E402
 from .world.entities import Owner, Robot, place_in_room, random_room  # noqa: E402
@@ -53,21 +56,34 @@ def main() -> int:
     p.add_argument("--owner-room", default=None,
                    help="Force the owner into a specific room (default: random)")
     p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--no-memory", action="store_true",
+                   help="Skip the long-term memory store for this run.")
+    p.add_argument("--reset-memory", action="store_true",
+                   help="Wipe the memory store before running.")
     args = p.parse_args()
 
     skills = build_world(seed=args.seed, owner_room=args.owner_room)
     skills.emotion.inject(args.emotion)
 
+    memory = None if args.no_memory else MemoryStore()
+    if memory and args.reset_memory:
+        memory.reset()
+
     print(f"\nRobot starts in: {skills.robot_room()}")
     print(f"Owner is in:     {skills.owner_room()}")
     print(f"Injected emotion: {args.emotion}")
-    print(f"LLM: {'MOCK' if config.USE_MOCK_LLM else config.LLM_MODEL}\n")
+    print(f"LLM: {'MOCK' if config.USE_MOCK_LLM else config.LLM_MODEL}")
+    if memory:
+        prof = memory.profile()
+        print(f"Memory: {memory.root}  (prior episodes: {prof.total_episodes})\n")
+    else:
+        print("Memory: disabled\n")
 
     try:
-        agent = make_agent(skills)
+        agent = make_agent(skills, memory=memory)
     except Exception as e:
         print(f"[error] could not start real LLM: {e}\nFalling back to MockLLM.")
-        agent = MockLLM(skills)
+        agent = MockLLM(skills, memory=memory)
 
     result = agent.run_turn(args.message)
 

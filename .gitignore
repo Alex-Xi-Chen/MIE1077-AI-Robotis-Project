@@ -28,3 +28,6 @@ Thumbs.db
 *.log
 logs/
 runs/
+
+# Long-term memory (per-user data, not for git)
+data/

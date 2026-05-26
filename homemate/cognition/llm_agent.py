@@ -24,6 +24,7 @@ from typing import Any, Callable, Optional
 
 from ..action.skills import Skills
 from ..config import LLM_MODEL, USE_MOCK_LLM
+from ..memory import MemoryStore, build_episode_from_turn
 from .tools import TOOL_SCHEMAS, dispatch_tool
 
 
@@ -67,7 +68,8 @@ class TurnResult:
 
 class LLMAgent:
     def __init__(self, skills: Skills, *, model: str, api_key: str,
-                 max_iters: int = 12) -> None:
+                 max_iters: int = 12,
+                 memory: MemoryStore | None = None) -> None:
         try:
             from anthropic import Anthropic
         except ImportError as exc:  # pragma: no cover
@@ -80,19 +82,26 @@ class LLMAgent:
         self.model = model
         self.skills = skills
         self.max_iters = max_iters
+        self.memory = memory
         self.history: list[dict[str, Any]] = []
 
     # --- constructors ---
 
     @classmethod
-    def from_env(cls, skills: Skills) -> "LLMAgent":
-        return cls(skills, model=LLM_MODEL, api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    def from_env(cls, skills: Skills,
+                 memory: MemoryStore | None = None) -> "LLMAgent":
+        return cls(skills, model=LLM_MODEL,
+                   api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+                   memory=memory)
 
     # --- run a turn ---
 
     def run_turn(self, user_message: str) -> TurnResult:
+        room_start = self.skills.robot_room()
         self.history.append({"role": "user", "content": user_message})
-        return self._run_loop()
+        result = self._run_loop()
+        self._record(user_message, room_start, result)
+        return result
 
     def _world_brief(self) -> str:
         s = self.skills
@@ -104,13 +113,43 @@ class LLMAgent:
                          "state": d.state} for d in s.iot.list()],
         }, indent=2)
 
+    def build_system(self) -> str:
+        """Assemble the full system prompt for the current turn.
+
+        Exposed (not prefixed with _) so tests can inspect it without calling
+        the real API.
+        """
+        parts = [SYSTEM_PROMPT,
+                 "\n\nCurrent world snapshot:\n", self._world_brief()]
+        if self.memory:
+            brief = self.memory.memory_brief()
+            if brief:
+                parts.append("\n\nWhat you remember about this owner:\n")
+                parts.append(brief)
+        return "".join(parts)
+
+    def _record(self, user_message: str, room_start: str | None,
+                result: TurnResult) -> None:
+        if not self.memory:
+            return
+        ep = build_episode_from_turn(
+            user_message=user_message,
+            robot_room_start=room_start,
+            robot_room_end=self.skills.robot_room(),
+            owner_room=self.skills.owner_room() if self.skills.owner_found else None,
+            tool_trace=result.tool_trace,
+            spoken=result.spoken,
+            final_text=result.final_text,
+        )
+        self.memory.record_episode(ep)
+
     def _run_loop(self) -> TurnResult:
         result = TurnResult()
         for _ in range(self.max_iters):
             resp = self.client.messages.create(
                 model=self.model,
                 max_tokens=1024,
-                system=SYSTEM_PROMPT + "\n\nCurrent world snapshot:\n" + self._world_brief(),
+                system=self.build_system(),
                 tools=TOOL_SCHEMAS,
                 messages=self.history,
             )
@@ -189,11 +228,14 @@ class MockLLM:
         "coffee":   ("brew",  "stop"),
     }
 
-    def __init__(self, skills: Skills) -> None:
+    def __init__(self, skills: Skills,
+                 memory: MemoryStore | None = None) -> None:
         self.skills = skills
+        self.memory = memory
         self.history: list[dict[str, Any]] = []
 
     def run_turn(self, user_message: str) -> TurnResult:
+        room_start = self.skills.robot_room()
         result = TurnResult()
 
         def call(name: str, **inp: Any) -> dict[str, Any]:
@@ -223,7 +265,23 @@ class MockLLM:
                 self._dispatch_iot_by_keyword(kw, msg, call)
 
         result.final_text = f"Done. Detected emotion: {emotion}."
+        self._record(user_message, room_start, result)
         return result
+
+    def _record(self, user_message: str, room_start: str | None,
+                result: TurnResult) -> None:
+        if not self.memory:
+            return
+        ep = build_episode_from_turn(
+            user_message=user_message,
+            robot_room_start=room_start,
+            robot_room_end=self.skills.robot_room(),
+            owner_room=self.skills.owner_room() if self.skills.owner_found else None,
+            tool_trace=result.tool_trace,
+            spoken=result.spoken,
+            final_text=result.final_text,
+        )
+        self.memory.record_episode(ep)
 
     def _dispatch_iot_by_keyword(self, kw: str, msg: str, call: Callable) -> None:
         # Figure out an action
@@ -264,7 +322,8 @@ class MockLLM:
 # ---------------------------------------------------------------------------
 
 
-def make_agent(skills: Skills) -> "LLMAgent | MockLLM":
+def make_agent(skills: Skills,
+               memory: MemoryStore | None = None) -> "LLMAgent | MockLLM":
     if USE_MOCK_LLM:
-        return MockLLM(skills)
-    return LLMAgent.from_env(skills)
+        return MockLLM(skills, memory=memory)
+    return LLMAgent.from_env(skills, memory=memory)
