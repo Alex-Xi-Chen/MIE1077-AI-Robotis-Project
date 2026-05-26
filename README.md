@@ -158,25 +158,6 @@ tests/
 
 ---
 
-## Pushing to GitHub (one-time setup)
-
-Because the project was authored from a sandboxed environment, an orphaned
-`.git/` folder may exist. Delete it first, then init fresh:
-
-```powershell
-cd C:\Users\xiche\OneDrive\Documents\Claude\Projects\MIE1077\MIE1077-AI-Robotis-Project
-Remove-Item -Recurse -Force .git
-git init -b main
-git add .
-git commit -m "Initial MVP: LLM + Vision + Planning + IoT in 2D simulator"
-git remote add origin https://github.com/Alex-Xi-Chen/MIE1077-AI-Robotis-Project.git
-git push -u origin main
-```
-
-After the first push you can use the normal `git add . && git commit -m "..." && git push` flow.
-
----
-
 ## Smoke test (no API key, no GUI)
 
 ```powershell
