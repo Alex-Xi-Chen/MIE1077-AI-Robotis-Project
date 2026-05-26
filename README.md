@@ -36,38 +36,6 @@ python -m homemate.scripts.snapshot
 # writes docs/images/pygame_demo.png
 ```
 
-### Phase 2: Real Claude API confirmed live
-
-```text
-$ python -m homemate.scripts.live_check
-[info] Pinging Claude. model=claude-sonnet-4-6
-[info] reply='OK'  input_tokens=15  output_tokens=4
-[OK] Claude is reachable and responding. Phase 2 is live.
-```
-
-### Phase 3: Long-term memory persists across runs
-
-After three sequential `demo_cli` turns, `data/memory/profile.json` rolls up:
-
-```json
-{
-  "total_episodes": 3,
-  "emotion_counts": { "sad": 1, "tired": 1, "happy": 1 },
-  "device_action_counts": {
-    "curtain.bedroom:open": 1,
-    "coffee.kitchen:brew": 1
-  },
-  "recent_requests": [
-    "open the bedroom curtains",
-    "brew some coffee",
-    "thanks for everything"
-  ]
-}
-```
-
-On the next turn, this rollup is summarised into a *"What you remember about this owner"* block that ships with the system prompt, so Claude can personalise replies across sessions.
-
----
 
 ## Quick start (Windows)
 
@@ -177,16 +145,6 @@ before you spend Claude tokens.
 - **Jun 19 – Jul 9** Phase 3: emotion-aware dialogue, **memory (done)**, full IoT control, ReAct planner, 20 eval scenarios — *in progress*
 - **Jul 10 – Jul 30** Phase 4: full evaluation + ablations + demo video + slide deck + Lecture 13 presentation
 
-## Long-term memory
-
-After each user turn, HomeMate appends a JSON episode describing what was
-asked, what emotion was detected, which rooms it visited, and which IoT
-changes it made. A tiny `profile.json` rollup (emotion counts, frequent
-devices, recent requests) is summarised into the system prompt on each new
-turn so Claude can personalise its replies across sessions.
-
-Default storage: `data/memory/episodes.jsonl` + `data/memory/profile.json`
-(gitignored). Override with `HOMEMATE_MEMORY_DIR`. CLI flags:
 
 ```powershell
 python -m homemate.demo_cli sad "open curtains" --reset-memory   # wipe first
