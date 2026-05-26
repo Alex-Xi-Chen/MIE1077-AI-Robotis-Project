@@ -126,17 +126,6 @@ tests/
 
 ---
 
-## Smoke test (no API key, no GUI)
-
-```powershell
-python -m pytest tests/ -q
-```
-
-This runs the whole pipeline with a **MockLLM** that follows a scripted scenario
-and a **MockEmotion** detector. Lets you verify everything is wired correctly
-before you spend Claude tokens.
-
----
 
 ## Roadmap (per proposal)
 
