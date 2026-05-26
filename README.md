@@ -18,6 +18,57 @@ coffee maker).
 
 ---
 
+## Demo
+
+![HomeMate Pygame demo](docs/images/pygame_demo.png)
+
+A typical scenario, captured from the live Pygame UI:
+
+- Robot (blue circle) is co-located with the owner (green square) in the **bedroom**.
+- Owner's emotion is read from the real webcam — DeepFace reports **tired** at 0.95 confidence.
+- HomeMate has actuated three IoT devices in response: **bedroom curtains open** (`C-O`), **living-room lamp on** (`L+`), and the **kitchen toaster cooking** at 55% progress (`T55%`).
+- The dialogue panel on the right shows a short empathetic exchange ending with the robot saying *"Any time. Rest up."*
+
+The screenshot is generated headlessly so it stays reproducible — anyone with the repo cloned can rebuild it:
+
+```powershell
+python -m homemate.scripts.snapshot
+# writes docs/images/pygame_demo.png
+```
+
+### Phase 2: Real Claude API confirmed live
+
+```text
+$ python -m homemate.scripts.live_check
+[info] Pinging Claude. model=claude-sonnet-4-6
+[info] reply='OK'  input_tokens=15  output_tokens=4
+[OK] Claude is reachable and responding. Phase 2 is live.
+```
+
+### Phase 3: Long-term memory persists across runs
+
+After three sequential `demo_cli` turns, `data/memory/profile.json` rolls up:
+
+```json
+{
+  "total_episodes": 3,
+  "emotion_counts": { "sad": 1, "tired": 1, "happy": 1 },
+  "device_action_counts": {
+    "curtain.bedroom:open": 1,
+    "coffee.kitchen:brew": 1
+  },
+  "recent_requests": [
+    "open the bedroom curtains",
+    "brew some coffee",
+    "thanks for everything"
+  ]
+}
+```
+
+On the next turn, this rollup is summarised into a *"What you remember about this owner"* block that ships with the system prompt, so Claude can personalise replies across sessions.
+
+---
+
 ## Quick start (Windows)
 
 ### 1. Install Python 3.10 or newer
@@ -96,7 +147,8 @@ homemate/
 ├── memory/
 │   └── store.py        # JSON-on-disk episodes + profile rollup
 ├── scripts/
-│   └── live_check.py   # Tiny one-shot Claude API connectivity check
+│   ├── live_check.py   # Tiny one-shot Claude API connectivity check
+│   └── snapshot.py     # Renders one Pygame frame headlessly to PNG (for the README)
 └── action/
     └── skills.py       # Primitive skills the LLM can call
 tests/
